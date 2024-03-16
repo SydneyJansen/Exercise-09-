@@ -1,0 +1,169 @@
+---
+title: '9'
+author: "Sydney Jansen"
+date: "2024-03-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Step 1
+#Using the {tidyverse} read_csv() function, load the “Street_et_al_2017.csv” dataset from this URL as a “tibble” named d.Do a quick exploratory data analysis where you generate the five-number summary (median, minimum and maximum and 1st and 3rd quartile values), plus mean and standard deviation, for each quantitative variable.
+install.packages("skimr")
+install.packages("ggpubr")
+library(ggpubr,tidyverse, mosiac)
+library(skimr)
+library(dplyr)
+d <- read_csv("https://raw.githubusercontent.com/difiore/ada-2024-datasets/main/Street_et_al_2017.csv")
+as_tibble(d)
+s <- skim(d)
+summary <- s |> filter(skim_type == "numeric") |> rename(variable = skim_variable, missing = n_missing, mean = numeric.mean, sd = numeric.sd, min = numeric.p0, p25 = numeric.p25, median = numeric.p50, p75 = numeric.p75, max = numeric.p100) |> select(variable, missing, mean, sd, min, p25, median, p75, max)
+
+
+```
+
+
+
+```{r}
+#Step 2
+#From this dataset, plot brain size (ECV) as a function of social group size (Group_size), longevity (Longevity), juvenile period length (Weaning), and reproductive lifespan (Repro_lifespan).
+
+library(ggplot2)
+ggplot(data = d, aes(y = ECV, x = Group_size)) + geom_point()
+ggplot(data = d, aes(y = ECV, x = Longevity)) + geom_point()
+ggplot(data = d, aes(y = ECV, x = Weaning)) + geom_point()
+ggplot(data = d, aes(y = ECV, x = Repro_lifespan)) + geom_point()
+```
+
+```{r}
+# Step 3
+#Derive by hand the ordinary least squares regression coefficients β1 and β0 for ECV as a function of social group size.
+d <- d |>
+  drop_na(ECV, Group_size)
+beta1 <- cor(d$Group_size, d$ECV) * (sd(d$ECV)/sd(d$Group_size))
+beta0 <- mean(d$ECV) - beta1 * mean(d$Group_size)
+
+# Step 4
+# Confirm that you get the same results using the `lm()` function.
+
+
+m <- lm(ECV ~ Group_size, data = d)
+summary(m)
+```
+
+```{r}
+# Step 5
+#Repeat the analysis above for three different major radiations of primates - “catarrhines”, “platyrrhines”, and “strepsirhines”) separately. These are stored in the variable Taxonomic_group. Do your regression coefficients differ among groups? How might you determine this?
+
+
+groups <- c("catarrhines", "platyrrhines", "strepsirhines")
+
+for(catarrhines in groups) {
+  # Filter the data for the current group and remove rows with NAs in the variables of interest
+  filtered_data <- d |>
+    filter(Taxonomic_group == group) |>
+    drop_na(ECV, Group_size)
+  
+  # Check if the filtered dataset has any rows left
+  if(nrow(filtered_data) > 0) {
+    # Proceed with regression only if there are non-NA cases
+    model_group <- lm(ECV ~ Group_size, data = filtered_data)
+    print(paste("Results for", group))
+    print(summary(model_group))
+  } else {
+    # Message if no non-NA cases
+    print(paste("No non-NA cases for group:", group))
+  }
+}
+
+
+
+```
+Step 6
+
+For your first regression of ECV on social group size, calculate the standard error for the slope coefficient, the 95% CI, and the p value associated with this coefficient by hand. Also extract this same information from the results of running the lm() function.
+```{r}
+#ex
+# first define alpha, CI boundaries, and critical values
+alpha <- 0.05
+confidence_level <- 1 - alpha
+p_lower <- alpha/2
+p_upper <- 1 - (alpha/2)
+degrees_of_freedom <- nrow(d) - 2
+critical_value <- qt(p_upper, df = degrees_of_freedom)
+
+# original slope
+original.slope <- lm(data = d, height ~ weight) %>%
+    # tidy the model and add the CI based on the t distribution
+tidy(conf.int = TRUE, conf.level = confidence_level) %>%
+    # or manually calculate the CI based on the t distribution
+mutate(lower = estimate - std.error * critical_value, upper = estimate + std.error *
+    critical_value) %>%
+    filter(term == "weight")
+original.slope  # show model results for slope of weight
+```
+Step 7
+Use a permutation approach with 1000 permutations to generate a null sampling distribution for the slope coefficient. What is it that you need to permute? What is the p value associated with your original slope coefficient? You can use either the percentile method (i.e., using quantiles from the actual permutation-based null sampling distribution) or a theory-based method (i.e., using the standard deviation of the permutation-based null sampling distribution as the estimate of the standard error, along with a normal or t distribution), or both, to calculate this p value.
+```{r}
+#ex
+library(lmodel2)  # load the lmodel2 package
+permuted.slope <- d %>%
+  # specify model
+  specify(height ~ weight) %>%
+  # use a null hypothesis of independence
+  hypothesize(null = "independence") %>%
+  # generate permutation replicates
+  generate(reps = 1000, type = "permute") %>%
+  # calculate the slope statistic
+  calculate(stat = "slope")
+
+head(permuted.slope) # slopes from first few permutation replicates
+```
+Step 8
+Use bootstrapping to generate a 95% CI for your estimate of the slope coefficient using both the percentile method and the theory-based method (i.e., using on the standard deviation of the bootstrapped sampling distribution as an estimate of the standard error). Do these CIs suggest that your slope coefficient is different from zero?
+```{r}
+#ex.
+set.seed(1)
+alpha <- 0.05
+p_lower <- alpha/2
+p_upper <- 1 - (alpha/2)
+boot.slope <- d %>%
+    # specify model
+specify(height ~ age) %>%
+    # generate bootstrap replicates
+generate(reps = 1000, type = "bootstrap") %>%
+    # calculate the slope statistic
+calculate(stat = "slope") %>%
+    summarize(boot.mean = mean(stat), boot.lower = quantile(stat, p_lower), boot.upper = quantile(stat,
+        p_upper))
+
+set.seed(1)
+boot.slope <- d %>%
+    # specify model
+specify(height ~ age) %>%
+    # generate bootstrap replicates
+generate(reps = 20, type = "bootstrap")
+
+g <- ggplot(data = d, aes(x = age, y = height)) + geom_point() + geom_smooth(data = boot.slope,
+    aes(x = age, y = height, group = replicate), method = "lm", se = FALSE, lwd = 0.1)
+g
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
