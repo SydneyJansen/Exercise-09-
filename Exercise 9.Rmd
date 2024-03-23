@@ -81,6 +81,7 @@ Step 6
 
 For your first regression of ECV on social group size, calculate the standard error for the slope coefficient, the 95% CI, and the p value associated with this coefficient by hand. Also extract this same information from the results of running the lm() function.
 ```{r}
+library(tidyverse)
 SSY <- sum((m$model$ECV - mean(m$model$ECV))^2)
 SSR <- sum((m$fitted.values - mean(m$model$ECV))^2)
 SSE <- sum((m$model$ECV - m$fitted.values)^2)
@@ -102,6 +103,7 @@ m.summary$calc.statistic <- (m.summary$estimate - 0)/m.summary$std.error
 lower <- m.summary$estimate - qt(1 - alpha/2, df = nrow(d) - 2) * m.summary$std.error
 upper <- m.summary$estimate + qt(1 - alpha/2, df = nrow(d) - 2) * m.summary$std.error
 CI <- cbind(lower, upper)
+
 
 m.summary$calc.p.value <- 2 * pt(m.summary$calc.statistic, df = nrow(d) - 2, lower.tail = FALSE)
 
