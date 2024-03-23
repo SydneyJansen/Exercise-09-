@@ -28,6 +28,8 @@ library(ggpubr)
 library(tidyverse)
 library(skimr)
 library(dplyr)
+library(tidyverse)
+library(broom)
 d <- read.csv("https://raw.githubusercontent.com/difiore/ada-2024-datasets/main/Street_et_al_2017.csv")
 as_tibble(d)
 s <- skim(d)
@@ -81,109 +83,91 @@ Step 6
 
 For your first regression of ECV on social group size, calculate the standard error for the slope coefficient, the 95% CI, and the p value associated with this coefficient by hand. Also extract this same information from the results of running the lm() function.
 ```{r}
-library(tidyverse)
 SSY <- sum((m$model$ECV - mean(m$model$ECV))^2)
 SSR <- sum((m$fitted.values - mean(m$model$ECV))^2)
 SSE <- sum((m$model$ECV - m$fitted.values)^2)
-DFR <- 1
-DFE <- nrow(d) - DFR - 1
-DFY <- nrow(d) - DFR
-MSR <- SSR/DFR
-MSE <- SSE/DFE
-MSY <- SSY/DFY
-
+MSR <- SSR/1 
+MSR
+MSE <- SSE/998 
+MSE
+MSY <- SSY/999 
+MSY
+fratio <- MSR/MSE
+fratio
+pf(q = fratio, df = 1, df2 = 998, lower.tail = FALSE)
 SSX <- sum((m$model$Group_size - mean(m$model$Group_size))^2)
 SEbeta1 <- sqrt(MSE/SSX)
 SEbeta0 <- sqrt((MSE * sum(m$model$Group_size^2))/(151 * SSX))
 SEbeta0
 
-alpha <- 0.05
 m.summary <- tidy(m)
-m.summary$calc.statistic <- (m.summary$estimate - 0)/m.summary$std.error
-lower <- m.summary$estimate - qt(1 - alpha/2, df = nrow(d) - 2) * m.summary$std.error
-upper <- m.summary$estimate + qt(1 - alpha/2, df = nrow(d) - 2) * m.summary$std.error
-CI <- cbind(lower, upper)
+
+percent_ci <- 95
+alpha <- 1 - percent_ci / 100
+t_crit <- qt(1 - alpha/2, df = nrow(d) - 2)
 
 
-m.summary$calc.p.value <- 2 * pt(m.summary$calc.statistic, df = nrow(d) - 2, lower.tail = FALSE)
+SEbeta1 <- m.summary$std.error[m.summary$term == "Group_size"]
+beta1 <- m.summary$estimate[m.summary$term == "Group_size"]
+lower_beta1 <- beta1 - t_crit * SEbeta1
+upper_beta1 <- beta1 + t_crit * SEbeta1
+CI_beta1 <- c(lower = lower_beta1, upper = upper_beta1)
+
+
+SEbeta0 <- m.summary$std.error[m.summary$term == "(Intercept)"]
+beta0 <- m.summary$estimate[m.summary$term == "(Intercept)"]
+lower_beta0 <- beta0 - t_crit * SEbeta0
+upper_beta0 <- beta0 + t_crit * SEbeta0
+CI_beta0 <- c(lower = lower_beta0, upper = upper_beta0)
+
+
+CI_beta1
+CI_beta0
+
+m <- lm(ECV ~ Group_size, data = d)
+summary(m)
+
+
 
 
 ```
 Step 7
-Use a permutation approach with 1000 permutations to generate a null sampling distribution for the slope coefficient. What is it that you need to permute? What is the p value associated with your original slope coefficient? You can use either the percentile method (i.e., using quantiles from the actual permutation-based null sampling distribution) or a theory-based method (i.e., using the standard deviation of the permutation-based null sampling distribution as the estimate of the standard error, along with a normal or t distribution), or both, to calculate this p value.
+Use a permutation approach with 1000 permutations to generate a null sampling distribution for the slope coefficient.
+
+What is it that you need to permute? 
+ECV and Group Size
+What is the p value associated with your original slope coefficient? 
+7.259435e-11
+You can use either the percentile method (i.e., using quantiles from the actual permutation-based null sampling distribution) or a theory-based method (i.e., using the standard deviation of the permutation-based null sampling distribution as the estimate of the standard error, along with a normal or t distribution), or both, to calculate this p value.
 ```{r}
+library(lmodel2)
+library(infer) #only thing to get "calculate" function to work
 critical_value <- qt((1 - (alpha/2)), df = (149))
-# null sampling distibution
 permuted.slope <- d |> specify(ECV ~ Group_size) |> hypothesize(null = "independence") |> generate(reps = 1000, type = "permute") |> calculate(stat = "slope")
 permuted.slope.summary <- permuted.slope |> summarize(estimate = mean(stat), std.error = sd(stat), lower = estimate - std.error * critical_value, upper = estimate + std.error * critical_value, perm.lower = quantile(stat, 0.025), perm.upper = quantile(stat, 0.975))
-# compare with the original slope
 original.slope <- lm(data = d, ECV ~ Group_size) |> tidy(conf.int = TRUE, conf.level = 0.95) |> mutate(lower = estimate - std.error * critical_value, upper = estimate + std.error * critical_value) |> filter(term == "Group_size")
-# get p value
 (p.value <- permuted.slope |> get_p_value(obs_stat = original.slope$estimate, direction="two_sided"))
 
-
-
-
-#ex
-library(lmodel2)  # load the lmodel2 package
-permuted.slope <- d %>%
-  # specify model
-  specify(height ~ weight) %>%
-  # use a null hypothesis of independence
-  hypothesize(null = "independence") %>%
-  # generate permutation replicates
-  generate(reps = 1000, type = "permute") %>%
-  # calculate the slope statistic
-  calculate(stat = "slope")
-
-head(permuted.slope) # slopes from first few permutation replicates
 ```
 Step 8
-Use bootstrapping to generate a 95% CI for your estimate of the slope coefficient using both the percentile method and the theory-based method (i.e., using on the standard deviation of the bootstrapped sampling distribution as an estimate of the standard error). Do these CIs suggest that your slope coefficient is different from zero?
+Use bootstrapping to generate a 95% CI for your estimate of the slope coefficient using both the percentile method and the theory-based method (i.e., using on the standard deviation of the bootstrapped sampling distribution as an estimate of the standard error). 
+Do these CIs suggest that your slope coefficient is different from zero?
+No, it is more than .05, therefore it is not significant
 ```{r}
+library(infer)
+boot.slope <- d |>
+   specify(ECV ~ Group_size) |>
+  generate(reps = 1000, type = "bootstrap") |>
+   calculate(stat = "slope")
+
+head(boot.slope)
 boot.slope.summary <- boot.slope |> summarize(estimate = mean(stat), std.error = sd(stat), lower = estimate - std.error * critical_value, upper = estimate + std.error * critical_value, boot.lower = quantile(stat, 0.025), boot.upper = quantile(stat, 0.975))
-# percentile method
 CI.percentile <- get_ci(boot.slope, level = 1 - alpha, type = "percentile")
-# theory based method
 CI.theory <- get_ci(boot.slope, level = 1 - alpha, type = "se", point_estimate = pull(boot.slope.summary,
     estimate))
 
-# is it different from zero?
 t_stat <- t.test(x = boot.slope.summary, mu = boot.slope.summary$estimate, alternative = "greater")
 
-#ex.
-set.seed(1)
-alpha <- 0.05
-p_lower <- alpha/2
-p_upper <- 1 - (alpha/2)
-boot.slope <- d %>%
-    # specify model
-specify(height ~ age) %>%
-    # generate bootstrap replicates
-generate(reps = 1000, type = "bootstrap") %>%
-    # calculate the slope statistic
-calculate(stat = "slope") %>%
-    summarize(boot.mean = mean(stat), boot.lower = quantile(stat, p_lower), boot.upper = quantile(stat,
-        p_upper))
-
-set.seed(1)
-boot.slope <- d %>%
-    # specify model
-specify(height ~ age) %>%
-    # generate bootstrap replicates
-generate(reps = 20, type = "bootstrap")
-
-g <- ggplot(data = d, aes(x = age, y = height)) + geom_point() + geom_smooth(data = boot.slope,
-    aes(x = age, y = height, group = replicate), method = "lm", se = FALSE, lwd = 0.1)
-g
-```
-
-```{r}
 
 ```
 
-```{r}
-
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
